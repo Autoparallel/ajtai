@@ -1,5 +1,7 @@
 use core::ops::{Add, Mul};
 
+use comptime::verify_modulus;
+
 use super::*;
 
 #[derive(Debug, Clone, Copy)]
@@ -8,7 +10,9 @@ where
   // D is a power of two
   [(); D.is_power_of_two() as usize - 1]:,
   // T is a divisor of D
-  [(); (D % T == 0) as usize - 1]:, {
+  [(); (D % T == 0) as usize - 1]:,
+  // q = 1 + 2*T (mod 4*T)
+  [(); verify_modulus::<F, T>() as usize - 1]:, {
   inner: [F; D],
 }
 
@@ -16,6 +20,7 @@ impl<F: PrimeField, const D: usize, const T: usize> Add for Ring<F, D, T>
 where
   [(); D.is_power_of_two() as usize - 1]:,
   [(); (D % T == 0) as usize - 1]:,
+  [(); verify_modulus::<F, T>() as usize - 1]:,
 {
   type Output = Self;
 
@@ -24,58 +29,53 @@ where
   }
 }
 
-// impl<F: PrimeField, const D: usize> Mul for Ring<F, D>
-// where [(); D.is_power_of_two() as usize - 1]:
-// {
-//   type Output = Self;
-
-//   fn mul(self, rhs: Self) -> Self::Output { todo!() }
-// }
-
 #[cfg(test)]
 mod tests {
   use super::*;
 
   #[test]
   fn test_valid_dimensions() {
-    let _: Ring<MockField, 1, 1> = create_ring([1]); // Works
-    let _: Ring<MockField, 2, 2> = create_ring([1, 2]); // Works
-    let _: Ring<MockField, 4, 2> = create_ring([1, 2, 3, 4]); // Works
+    let _: Ring<MockField, 8, 8> = create_ring([1; 8]);
+    let _: Ring<MockField, 16, 8> = create_ring([1; 16]);
   }
 
   // Helper function to create Ring instances more easily
   fn create_ring<const D: usize, const T: usize>(values: [u64; D]) -> Ring<MockField, D, T>
   where
     [(); D.is_power_of_two() as usize - 1]:,
-    [(); (D % T == 0) as usize - 1]:, {
+    [(); (D % T == 0) as usize - 1]:,
+    [(); verify_modulus::<MockField, T>() as usize - 1]:, {
     Ring { inner: values.map(MockField::from) }
   }
-
   #[rstest]
   #[case::basic_addition(
-    [5],
-    [7],
-    [12]
-)]
+      [1; 16],
+      [2; 16],
+      [3; 16]
+  )]
   #[case::with_zero(
-    [0],
-    [8],
-    [8]
-)]
+      [0; 16],
+      [5; 16],
+      [5; 16]
+  )]
   #[case::wrapping_around_modulus(
-    [15],
-    [10],
-    [6]  // (15+10)%19=6
-)]
+      [15; 16],
+      [10; 16],
+      [8; 16]  // (15+10)%17=8
+  )]
   #[case::large_numbers(
-    [18],
-    [18],
-    [17]  // (18+18)%19=17
-)]
-  fn test_add_dimension_one(#[case] a: [u64; 1], #[case] b: [u64; 1], #[case] expected: [u64; 1]) {
-    let ring_a: Ring<MockField, 1, 1> = create_ring(a);
-    let ring_b: Ring<MockField, 1, 1> = create_ring(b);
-    let expected_ring: Ring<MockField, 1, 1> = create_ring(expected);
+      [16; 16],
+      [16; 16],
+      [15; 16]  // (16+16)%17=15
+  )]
+  fn test_add_dimension_sixteen(
+    #[case] a: [u64; 16],
+    #[case] b: [u64; 16],
+    #[case] expected: [u64; 16],
+  ) {
+    let ring_a: Ring<MockField, 16, 8> = create_ring(a);
+    let ring_b: Ring<MockField, 16, 8> = create_ring(b);
+    let expected_ring: Ring<MockField, 16, 8> = create_ring(expected);
 
     assert_eq!(
       (ring_a + ring_b).inner.map(|f| f.inner()[0]),
@@ -85,61 +85,33 @@ mod tests {
 
   #[rstest]
   #[case::basic_addition(
-        [1, 2],
-        [3, 4],
-        [4, 6]
-    )]
-  #[case::with_zero(
-        [0, 5],
-        [7, 0],
-        [7, 5]
-    )]
-  #[case::wrapping_around_modulus(
-        [10, 15],
-        [12, 8],
-        [3, 4]  // (10+12)%19=3, (15+8)%19=4
-    )]
-  #[case::large_numbers(
-        [18, 18],
-        [18, 18],
-        [17, 17]  // (18+18)%19=17
-    )]
-  fn test_add_dimension_two(#[case] a: [u64; 2], #[case] b: [u64; 2], #[case] expected: [u64; 2]) {
-    let ring_a: Ring<MockField, 2, 1> = create_ring(a);
-    let ring_b: Ring<MockField, 2, 1> = create_ring(b);
-    let expected_ring: Ring<MockField, 2, 1> = create_ring(expected);
-
-    assert_eq!(
-      (ring_a + ring_b).inner.map(|f| f.inner()[0]),
-      expected_ring.inner.map(|f| f.inner()[0])
-    );
-  }
-
-  #[rstest]
-  #[case::basic_addition(
-      [1, 2, 3, 4],
-      [5, 6, 7, 8],
-      [6, 8, 10, 12]
+      [1, 2, 3, 4, 5, 6, 7, 8],
+      [2, 3, 4, 5, 6, 7, 8, 9],
+      [3, 5, 7, 9, 11, 13, 15, 0]  // Last value wraps: (8+9)%17=0
   )]
   #[case::with_zero(
-      [0, 2, 0, 4],
-      [5, 0, 7, 0],
-      [5, 2, 7, 4]
+      [0, 0, 0, 0, 0, 0, 0, 0],
+      [1, 2, 3, 4, 5, 6, 7, 8],
+      [1, 2, 3, 4, 5, 6, 7, 8]
   )]
   #[case::wrapping_around_modulus(
-      [15, 16, 17, 18],
-      [10, 11, 12, 13],
-      [6, 8, 10, 12]  // All values mod 19
+      [15, 15, 15, 15, 15, 15, 15, 15],
+      [10, 10, 10, 10, 10, 10, 10, 10],
+      [8, 8, 8, 8, 8, 8, 8, 8]  // (15+10)%17=8
   )]
-  #[case::large_numbers(
-      [18, 18, 18, 18],
-      [18, 18, 18, 18],
-      [17, 17, 17, 17]  // (18+18)%19=17
+  #[case::alternating_pattern(
+      [16, 0, 16, 0, 16, 0, 16, 0],
+      [0, 16, 0, 16, 0, 16, 0, 16],
+      [16, 16, 16, 16, 16, 16, 16, 16]
   )]
-  fn test_add_dimension_four(#[case] a: [u64; 4], #[case] b: [u64; 4], #[case] expected: [u64; 4]) {
-    let ring_a: Ring<MockField, 4, 2> = create_ring(a);
-    let ring_b: Ring<MockField, 4, 2> = create_ring(b);
-    let expected_ring: Ring<MockField, 4, 2> = create_ring(expected);
+  fn test_add_dimension_eight(
+    #[case] a: [u64; 8],
+    #[case] b: [u64; 8],
+    #[case] expected: [u64; 8],
+  ) {
+    let ring_a: Ring<MockField, 8, 8> = create_ring(a);
+    let ring_b: Ring<MockField, 8, 8> = create_ring(b);
+    let expected_ring: Ring<MockField, 8, 8> = create_ring(expected);
 
     assert_eq!(
       (ring_a + ring_b).inner.map(|f| f.inner()[0]),
