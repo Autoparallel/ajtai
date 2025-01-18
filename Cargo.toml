@@ -1,10 +1,10 @@
 [package]
 authors     = ["Colin Roberts"]
-description = "A description of $THING"
+description = "A no-std implementation of the Ajtai commitment scheme."
 edition     = "2021"
-keywords    = ["THING1", "THING2"]
+keywords    = ["cryptography", "commitment scheme", "lattices"]
 license     = "MIT"
-name        = "$THING"
+name        = "ajtai"
 readme      = "README.md"
-repository  = "https://github.com/autoparallel/$THING"
+repository  = "https://github.com/autoparallel/ajtai"
 version     = "0.1.0"
