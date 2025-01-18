@@ -8,6 +8,23 @@
 #[macro_use]
 extern crate std;
 
-#[cfg(test)] use rstest::rstest;
+use ff::PrimeField;
+#[cfg(test)] use {mock::MockField, rstest::rstest};
 
+pub mod comptime;
 pub mod ring;
+
+#[cfg(test)]
+mod mock {
+  use super::*;
+
+  #[derive(PrimeField)]
+  #[PrimeFieldModulus = "17"]
+  #[PrimeFieldGenerator = "2"]
+  #[PrimeFieldReprEndianness = "little"]
+  pub struct MockField([u64; 1]);
+
+  impl MockField {
+    pub fn inner(&self) -> &[u64] { &self.0 }
+  }
+}

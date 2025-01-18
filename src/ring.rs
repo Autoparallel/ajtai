@@ -1,8 +1,6 @@
 use core::ops::{Add, Mul};
 
-use ff::PrimeField;
-
-#[cfg(test)] use super::*;
+use super::*;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Ring<F: PrimeField, const D: usize, const T: usize>
@@ -37,12 +35,6 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
-
-  #[derive(PrimeField)]
-  #[PrimeFieldModulus = "19"]
-  #[PrimeFieldGenerator = "2"]
-  #[PrimeFieldReprEndianness = "little"]
-  struct MockField([u64; 1]);
 
   #[test]
   fn test_valid_dimensions() {
@@ -85,7 +77,10 @@ mod tests {
     let ring_b: Ring<MockField, 1, 1> = create_ring(b);
     let expected_ring: Ring<MockField, 1, 1> = create_ring(expected);
 
-    assert_eq!((ring_a + ring_b).inner.map(|f| f.0[0]), expected_ring.inner.map(|f| f.0[0]));
+    assert_eq!(
+      (ring_a + ring_b).inner.map(|f| f.inner()[0]),
+      expected_ring.inner.map(|f| f.inner()[0])
+    );
   }
 
   #[rstest]
@@ -114,7 +109,10 @@ mod tests {
     let ring_b: Ring<MockField, 2, 1> = create_ring(b);
     let expected_ring: Ring<MockField, 2, 1> = create_ring(expected);
 
-    assert_eq!((ring_a + ring_b).inner.map(|f| f.0[0]), expected_ring.inner.map(|f| f.0[0]));
+    assert_eq!(
+      (ring_a + ring_b).inner.map(|f| f.inner()[0]),
+      expected_ring.inner.map(|f| f.inner()[0])
+    );
   }
 
   #[rstest]
@@ -143,6 +141,9 @@ mod tests {
     let ring_b: Ring<MockField, 4, 2> = create_ring(b);
     let expected_ring: Ring<MockField, 4, 2> = create_ring(expected);
 
-    assert_eq!((ring_a + ring_b).inner.map(|f| f.0[0]), expected_ring.inner.map(|f| f.0[0]));
+    assert_eq!(
+      (ring_a + ring_b).inner.map(|f| f.inner()[0]),
+      expected_ring.inner.map(|f| f.inner()[0])
+    );
   }
 }
