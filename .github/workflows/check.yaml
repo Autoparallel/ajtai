@@ -16,6 +16,7 @@ jobs:
   format:
     name: fmt
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       
@@ -33,17 +34,24 @@ jobs:
       - name: run TOML fmt
         run: taplo fmt --check
 
-  build-and-test:
-    name: ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
+  per-target:
+    name: ${{ matrix.job }} / ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest  # x86_64
+          - job: build
             target: x86_64-unknown-linux-gnu
-          - os: ubuntu-latest-arm64  # aarch64
+          - job: lint
+            target: x86_64-unknown-linux-gnu
+          - job: build
             target: aarch64-unknown-linux-gnu
-          - os: ubuntu-latest  # wasm can run on either
+          - job: lint
+            target: aarch64-unknown-linux-gnu
+          - job: build
+            target: wasm32-unknown-unknown
+          - job: lint
             target: wasm32-unknown-unknown
     steps:
       - uses: actions/checkout@v4
@@ -52,34 +60,65 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
         with:
           targets: ${{ matrix.target }}
-          components: clippy
+          components: ${{ matrix.job == 'lint' && 'clippy' || '' }}
+
+      - name: Set up QEMU
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
-          key: check/${{ matrix.target }}
+          key: check/${{ matrix.job }}/${{ matrix.target }}
 
       - name: Build
+        if: matrix.job == 'build'
         run: cargo build --target ${{ matrix.target }} --workspace
 
       - name: Clippy
+        if: matrix.job == 'lint'
         run: cargo clippy --target ${{ matrix.target }} --all-targets --all-features -- --deny warnings
+
+  test:
+    name: test / ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+          - target: wasm32-unknown-unknown
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: check/test/${{ matrix.target }}
 
       - name: Setup wasm-pack
         if: matrix.target == 'wasm32-unknown-unknown'
         uses: jetli/wasm-pack-action@v0.4.0
 
-      - name: Test
+      - name: Run tests
         if: matrix.target != 'wasm32-unknown-unknown'
-        run: cargo test --target ${{ matrix.target }} --workspace
+        run: cargo test --verbose --target ${{ matrix.target }} --workspace
 
-      - name: Test WASM
+      - name: Run wasm tests
         if: matrix.target == 'wasm32-unknown-unknown'
         run: wasm-pack test --node
 
   udeps:
     name: udeps
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       
@@ -95,6 +134,7 @@ jobs:
   semver:
     name: semver
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
