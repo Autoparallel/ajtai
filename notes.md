@@ -20,3 +20,4 @@ Then $$1+2\cdot 8 = 17~(\textrm{mod}~32)$$
 ## NTT
 - https://www.nayuki.io/page/number-theoretic-transform-integer-dft
 - has less restrictions on it than in the paper
+- https://eprint.iacr.org/2016/504.pdf 

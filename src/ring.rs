@@ -1,6 +1,6 @@
 use core::ops::{Add, Mul};
 
-use comptime::verify_modulus;
+use comptime::{unity_power, verify_modulus};
 
 use super::*;
 
@@ -37,7 +37,7 @@ where
   [(); verify_modulus::<F, T>() as usize - 1]:,
 {
   pub fn ntt(self) -> Ring<F, D, T, NTTBasis> {
-    let omega = F::MULTIPLICATIVE_GENERATOR.square();
+    let omega = F::MULTIPLICATIVE_GENERATOR.pow([unity_power::<F, D>()]);
     let mut result = [F::ZERO; D];
 
     for i in 0..D {
@@ -61,8 +61,9 @@ where
   [(); verify_modulus::<F, T>() as usize - 1]:,
 {
   pub fn intt(self) -> Ring<F, D, T, StandardBasis> {
-    let divisor = (F::ZERO - F::ONE);
-    let omega = F::MULTIPLICATIVE_GENERATOR.square();
+    // TODO: calling `.pow()` is going to be more inefficient than other methods probably. This can
+    // likely all be done at compile time.
+    let omega = F::MULTIPLICATIVE_GENERATOR.pow([unity_power::<F, D>()]);
     // TODO: probably don't need to call invert explicitly since that is slow and we can probably
     // const compute the correct thing here
     let omega_inv = omega.invert().unwrap();
@@ -248,6 +249,51 @@ mod tests {
 
     assert_eq!(
       input.coefficients.map(|f| f.inner()[0]),
+      intt_result.coefficients.map(|f| f.inner()[0])
+    );
+  }
+
+  #[test]
+  fn test_mul() {
+    // Create polynomial 1 + X (coefficients: 1, 1, 0, 0, 0, 0, 0, 0)
+    let input_1: Ring<MockField, 8, 8, StandardBasis> = create_ring([1, 1, 0, 0, 0, 0, 0, 0]);
+    let input_2: Ring<MockField, 8, 8, StandardBasis> = create_ring([0, 0, 1, 0, 0, 0, 0, 0]);
+
+    // Compute NTT
+    let ntt_result_1 = input_1.ntt();
+    let ntt_result_2 = input_2.ntt();
+    let mul_result = ntt_result_1 * ntt_result_2;
+    let intt_result = mul_result.intt();
+
+    // Correct answer
+    let expected: Ring<MockField, 8, 8, StandardBasis> = create_ring([0, 0, 1, 1, 0, 0, 0, 0]);
+
+    assert_eq!(
+      expected.coefficients.map(|f| f.inner()[0]),
+      intt_result.coefficients.map(|f| f.inner()[0])
+    );
+  }
+
+  #[test]
+  fn test_mul_D_16() {
+    // Create polynomial 1 + X (coefficients: 1, 1, 0, 0, 0, 0, 0, 0)
+    let input_1: Ring<MockField, 16, 8, StandardBasis> =
+      create_ring([1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let input_2: Ring<MockField, 16, 8, StandardBasis> =
+      create_ring([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+    // Compute NTT
+    let ntt_result_1 = input_1.ntt();
+    let ntt_result_2 = input_2.ntt();
+    let mul_result = ntt_result_1 * ntt_result_2;
+    let intt_result = mul_result.intt();
+
+    // Correct answer
+    let expected: Ring<MockField, 16, 8, StandardBasis> =
+      create_ring([0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+    assert_eq!(
+      expected.coefficients.map(|f| f.inner()[0]),
       intt_result.coefficients.map(|f| f.inner()[0])
     );
   }

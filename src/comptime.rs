@@ -9,6 +9,7 @@ const fn hex_to_digit(c: u8) -> Option<u64> {
   }
 }
 
+// TODO: Can do this more like the other function (unity power)
 const fn get_remainder_4T<const T: usize>(s: &str) -> Option<u64> {
   let bytes = s.as_bytes();
   if bytes.is_empty() {
@@ -42,10 +43,42 @@ const fn get_remainder_4T<const T: usize>(s: &str) -> Option<u64> {
 pub const fn verify_modulus<F: PrimeField, const T: usize>() -> bool {
   if let Some(remainder) = get_remainder_4T::<T>(F::MODULUS) {
     let target = 1 + 2 * (T as u64);
-    remainder == target % (4 * (T as u64))
+    target == remainder % (4 * (T as u64))
   } else {
     false
   }
+}
+
+#[cfg(test)]
+pub const fn unity_power<F: PrimeField, const D: usize>() -> u64 {
+  let bytes = F::MODULUS.as_bytes();
+  if bytes.is_empty() {
+    return 0;
+  }
+
+  let mut i = if bytes.len() >= 2 && bytes[0] == b'0' && (bytes[1] == b'x' || bytes[1] == b'X') {
+    if bytes.len() == 2 {
+      return 0;
+    }
+    2 // Skip "0x" prefix
+  } else {
+    0
+  };
+
+  let mut value = 0u64;
+
+  // First compute the full modulus value
+  while i < bytes.len() {
+    if let Some(digit) = hex_to_digit(bytes[i]) {
+      value = value * 16 + digit;
+    } else {
+      return 0;
+    }
+    i += 1;
+  }
+
+  // Subtract 1 and divide by D
+  (value - 1) / (D as u64)
 }
 
 #[cfg(test)]
@@ -102,5 +135,11 @@ mod tests {
 
     // Test with larger T values
     assert!(!verify_modulus::<MockField, 16>());
+  }
+
+  #[test]
+  fn test_unity_power() {
+    assert_eq!(unity_power::<MockField, 8>(), 2);
+    assert_eq!(unity_power::<MockField, 16>(), 1);
   }
 }
