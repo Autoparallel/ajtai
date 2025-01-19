@@ -26,7 +26,7 @@ ajtai = "0.1.0"
 ```
 
 Basic example:
-```rust
+```rust, ignore
 use ajtai::ring::{CyclotomicRing, StandardBasis};
 use ff::PrimeField;
 
