@@ -14,21 +14,9 @@ bold := "\\033[1m"
 header msg:
     @printf "{{info}}{{bold}}==> {{msg}}{{reset}}\n"
 
-# Install required system dependencies
-install-deps:
-    @just header "Installing system dependencies"
-    # macOS
-    if command -v brew > /dev/null; then \
-        brew install filosottile/musl-cross/musl-cross mingw-w64; \
-    fi
-    # Linux
-    if command -v apt-get > /dev/null; then \
-        sudo apt-get update && sudo apt-get install -y musl-tools mingw-w64; \
-    elif command -v dnf > /dev/null; then \
-        sudo dnf install -y musl-gcc mingw64-gcc; \
-    elif command -v pacman > /dev/null; then \
-        sudo pacman -Sy musl mingw-w64-gcc; \
-    fi
+# Get native architecture
+[private]
+native_arch := if `uname -m` == "arm64" { "aarch64" } else { `uname -m` }
 
 # Install cargo tools
 install-cargo-tools:
@@ -54,19 +42,31 @@ install-cargo-tools:
     else \
         printf "{{success}}✓ taplo already installed{{reset}}\n"; \
     fi
+    # wasm-pack
+    if ! command -v wasm-pack > /dev/null; then \
+        printf "{{info}}Installing wasm-pack...{{reset}}\n" && \
+        cargo install wasm-pack; \
+    else \
+        printf "{{success}}✓ wasm-pack already installed{{reset}}\n"; \
+    fi
 
 # Install nightly rust
 install-rust-nightly:
     @just header "Installing Rust nightly"
     rustup install nightly
+    rustup component add clippy --toolchain nightly
+    rustup component add rustfmt --toolchain nightly
 
 # Install required Rust targets
 install-targets:
     @just header "Installing Rust targets"
-    rustup target add x86_64-unknown-linux-musl aarch64-apple-darwin x86_64-pc-windows-gnu
+    rustup target add \
+        aarch64-unknown-linux-gnu \
+        x86_64-unknown-linux-gnu \
+        wasm32-unknown-unknown
 
 # Setup complete development environment
-setup: install-deps install-targets install-cargo-tools install-rust-nightly
+setup: install-cargo-tools install-rust-nightly install-targets
     @printf "{{success}}{{bold}}Development environment setup complete!{{reset}}\n"
 
 # Build with local OS target
@@ -74,60 +74,60 @@ build:
     @just header "Building workspace"
     cargo build --workspace --all-targets
 
-# Build with MacOS and Linux targets
-build-all: build-mac build-linux build-windows
+# Build all architecture targets
+build-all: build-aarch64 build-x86 build-wasm
     @printf "{{success}}{{bold}}All arch builds completed!{{reset}}\n"
 
-# Build just the target
-build-mac:
-    @just header "Building macOS ARM64"
-    cargo build --workspace --target aarch64-apple-darwin
+# Build aarch64 target
+build-aarch64:
+    @just header "Building aarch64"
+    cargo build --workspace --target aarch64-unknown-linux-gnu
 
-# Build the Linux target
-build-linux:
-    @just header "Building Linux x86_64"
-    cargo build --workspace --target x86_64-unknown-linux-musl
+# Build x86_64 target
+build-x86:
+    @just header "Building x86_64"
+    cargo build --workspace --target x86_64-unknown-linux-gnu
 
-# Build the Windows target
-build-windows:
-    @just header "Building Windows x86_64"
-    cargo build --workspace --target x86_64-pc-windows-gnu
+# Build wasm target
+build-wasm:
+    @just header "Building wasm32"
+    cargo build --workspace --target wasm32-unknown-unknown
 
-# Run the tests on your local OS
+# Run tests for native architecture and wasm
 test:
-    @just header "Running main test suite"
+    @just header "Running native architecture tests"
     cargo test --workspace --all-targets --all-features
-    @just header "Running doc tests"
-    cargo test --workspace --doc
+    @just header "Running wasm tests"
+    wasm-pack test --node
 
-# Run clippy for the workspace on your local OS
+# Run clippy for the workspace
 lint:
     @just header "Running clippy"
-    cargo clippy --workspace --all-targets --all-features
+    cargo clippy --workspace --all-targets --all-features -- --deny warnings
 
-# Run clippy for the workspace on MacOS and Linux targets
-lint-all: lint-mac lint-linux lint-windows
+# Run clippy for all targets
+lint-all: lint-aarch64 lint-x86 lint-wasm
     @printf "{{success}}{{bold}}All arch lint completed!{{reset}}\n"
 
-# Run clippy for the MacOS target
-lint-mac:
-    @just header "Checking lint on macOS ARM64"
-    cargo clippy --workspace --all-targets --target aarch64-apple-darwin
+# Run clippy for the aarch64 target
+lint-aarch64:
+    @just header "Checking lint on aarch64"
+    cargo clippy --workspace --all-targets --target aarch64-unknown-linux-gnu -- --deny warnings
 
-# Run clippy for the Linux target
-lint-linux:
-    @just header "Checking lint on Linux x86_64"
-    cargo clippy --workspace --all-targets --target x86_64-unknown-linux-musl
+# Run clippy for the x86_64 target
+lint-x86:
+    @just header "Checking lint on x86_64"
+    cargo clippy --workspace --all-targets --target x86_64-unknown-linux-gnu -- --deny warnings
 
-# Run clippy for the Windows target
-lint-windows:
-    @just header "Checking lint on Windows x86_64"
-    cargo clippy --workspace --all-targets --target x86_64-pc-windows-gnu
+# Run clippy for the wasm target
+lint-wasm:
+    @just header "Checking lint on wasm32"
+    cargo clippy --workspace --all-targets --target wasm32-unknown-unknown -- --deny warnings
 
-# Check for semantic versioning for workspace crates
+# Check for semantic versioning
 semver:
     @just header "Checking semver compatibility"
-    cargo semver-checks check-release --workspace
+    rustup override set stable && cargo semver-checks check-release --workspace && rustup override unset
 
 # Run format for the workspace
 fmt:
@@ -135,38 +135,40 @@ fmt:
     cargo fmt --all
     taplo fmt
 
-# Check for unused dependencies in the workspace
+# Check for unused dependencies
 udeps:
     @just header "Checking unused dependencies"
     cargo +nightly udeps --workspace
 
-# Run cargo clean to remove build artifacts
+# Clean build artifacts
 clean:
     @just header "Cleaning build artifacts"
     cargo clean
 
-# Show your relevant environment information
+# Show environment information
 info:
     @just header "Environment Information"
     @printf "{{info}}OS:{{reset}} %s\n" "$(uname -s)"
+    @printf "{{info}}Architecture:{{reset}} %s\n" "$(uname -m)"
     @printf "{{info}}Rust:{{reset}} %s\n" "$(rustc --version)"
     @printf "{{info}}Cargo:{{reset}} %s\n" "$(cargo --version)"
     @printf "{{info}}Installed targets:{{reset}}\n"
     @rustup target list --installed | sed 's/^/  /'
 
-# Run all possible CI checks (cannot test a non-local OS target!)
+# Run all CI checks
 ci:
     @printf "{{bold}}Starting CI checks{{reset}}\n\n"
     @ERROR=0; \
     just run-single-check "Rust formatting" "cargo fmt --all -- --check" || ERROR=1; \
     just run-single-check "TOML formatting" "taplo fmt --check" || ERROR=1; \
-    just run-single-check "Linux build" "cargo build --target x86_64-unknown-linux-musl --workspace" || ERROR=1; \
-    just run-single-check "macOS build" "cargo build --target aarch64-apple-darwin --workspace" || ERROR=1; \
-    just run-single-check "Windows build" "cargo build --target x86_64-pc-windows-gnu --workspace" || ERROR=1; \
-    just run-single-check "Linux clippy" "cargo clippy --target x86_64-unknown-linux-musl --all-targets --all-features -- --deny warnings" || ERROR=1; \
-    just run-single-check "macOS clippy" "cargo clippy --target aarch64-apple-darwin --all-targets --all-features -- --deny warnings" || ERROR=1; \
-    just run-single-check "Windows clippy" "cargo clippy --target x86_64-pc-windows-gnu --all-targets --all-features -- --deny warnings" || ERROR=1; \
-    just run-single-check "Test suite" "cargo test --verbose --workspace" || ERROR=1; \
+    just run-single-check "aarch64 build" "cargo build --target aarch64-unknown-linux-gnu --workspace" || ERROR=1; \
+    just run-single-check "x86_64 build" "cargo build --target x86_64-unknown-linux-gnu --workspace" || ERROR=1; \
+    just run-single-check "wasm32 build" "cargo build --target wasm32-unknown-unknown --workspace" || ERROR=1; \
+    just run-single-check "aarch64 clippy" "cargo clippy --target aarch64-unknown-linux-gnu --all-targets --all-features -- --deny warnings" || ERROR=1; \
+    just run-single-check "x86_64 clippy" "cargo clippy --target x86_64-unknown-linux-gnu --all-targets --all-features -- --deny warnings" || ERROR=1; \
+    just run-single-check "wasm32 clippy" "cargo clippy --target wasm32-unknown-unknown --all-targets --all-features -- --deny warnings" || ERROR=1; \
+    just run-single-check "Native tests" "cargo test --verbose --workspace" || ERROR=1; \
+    just run-single-check "WASM tests" "wasm-pack test --node" || ERROR=1; \
     just run-single-check "Unused dependencies" "cargo +nightly udeps --workspace" || ERROR=1; \
     just run-single-check "Semver compatibility" "(rustup override set stable && cargo semver-checks check-release --workspace && rustup override unset)" || ERROR=1; \
     printf "\n{{bold}}CI Summary:{{reset}}\n"; \
@@ -194,18 +196,3 @@ run-single-check name command:
         printf "{{error}}----------------------------------------{{reset}}\n"
         exit 1
     fi
-
-# Success summary (called if all checks pass)
-[private]
-_ci-summary-success:
-    @printf "\n{{bold}}CI Summary:{{reset}}\n"
-    @printf "{{success}}{{bold}}All checks passed successfully!{{reset}}\n"
-
-# Failure summary (called if any check fails)
-[private]
-_ci-summary-failure:
-    @printf "\n{{bold}}CI Summary:{{reset}}\n"
-    @printf "{{error}}{{bold}}Some checks failed. See output above for details.{{reset}}\n"
-    @exit 1
-
-
