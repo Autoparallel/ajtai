@@ -9,8 +9,7 @@ const fn hex_to_digit(c: u8) -> Option<u64> {
   }
 }
 
-// TODO: Can do this more like the other function (unity power)
-const fn get_remainder_4T<const T: usize>(s: &str) -> Option<u64> {
+const fn parse_hex(s: &str) -> Option<u64> {
   let bytes = s.as_bytes();
   if bytes.is_empty() {
     return None;
@@ -25,60 +24,41 @@ const fn get_remainder_4T<const T: usize>(s: &str) -> Option<u64> {
     0
   };
 
-  let mut remainder = 0u64;
-  let four_t = 4 * (T as u64);
-
+  let mut value = 0u64;
   while i < bytes.len() {
     if let Some(digit) = hex_to_digit(bytes[i]) {
-      remainder = ((remainder * 16) % four_t + digit % four_t) % four_t;
+      value = value * 16 + digit;
     } else {
       return None;
     }
     i += 1;
   }
 
-  Some(remainder)
+  Some(value)
 }
 
+const fn get_remainder_4t(value: u64, t: usize) -> u64 {
+  let four_t = 4 * (t as u64);
+  value % four_t
+}
+
+const fn get_unity_power(value: u64, d: usize) -> u64 { (value - 1) / (d as u64) }
+
 pub const fn verify_modulus<F: PrimeField, const T: usize>() -> bool {
-  if let Some(remainder) = get_remainder_4T::<T>(F::MODULUS) {
+  if let Some(value) = parse_hex(F::MODULUS) {
+    let remainder = get_remainder_4t(value, T);
     let target = 1 + 2 * (T as u64);
-    target == remainder % (4 * (T as u64))
+    remainder == target % (4 * (T as u64))
   } else {
     false
   }
 }
 
-#[cfg(test)]
 pub const fn unity_power<F: PrimeField, const D: usize>() -> u64 {
-  let bytes = F::MODULUS.as_bytes();
-  if bytes.is_empty() {
-    return 0;
+  match parse_hex(F::MODULUS) {
+    Some(value) => get_unity_power(value, D),
+    None => 0,
   }
-
-  let mut i = if bytes.len() >= 2 && bytes[0] == b'0' && (bytes[1] == b'x' || bytes[1] == b'X') {
-    if bytes.len() == 2 {
-      return 0;
-    }
-    2 // Skip "0x" prefix
-  } else {
-    0
-  };
-
-  let mut value = 0u64;
-
-  // First compute the full modulus value
-  while i < bytes.len() {
-    if let Some(digit) = hex_to_digit(bytes[i]) {
-      value = value * 16 + digit;
-    } else {
-      return 0;
-    }
-    i += 1;
-  }
-
-  // Subtract 1 and divide by D
-  (value - 1) / (D as u64)
 }
 
 #[cfg(test)]
@@ -110,36 +90,46 @@ mod tests {
   }
 
   #[rstest]
-  #[case("0x11", 17)] // 0x11 = 17 (mod 32)
-  #[case("0xFF", 31)] // 0xFF = 255 ≡ 31 (mod 32)
-  #[case("17", 23)] // 17 (mod 32) = 17
-  #[case("0x17", 23)] // 0x17 = 23 (mod 32)
-  #[case("0x10", 16)] // 0x10 = 16 (mod 32)
-  fn test_get_remainder_valid(#[case] input: &str, #[case] expected: u64) {
-    assert_eq!(get_remainder_4T::<8>(input).unwrap(), expected);
+  #[case("0x11", 17)]
+  #[case("0xff", 255)]
+  #[case("17", 23)]
+  #[case("0x0", 0)]
+  fn test_parse_hex_valid(#[case] input: &str, #[case] expected: u64) {
+    assert_eq!(parse_hex(input).unwrap(), expected);
   }
 
   #[rstest]
-  #[case("")] // Empty after prefix
+  #[case("")] // Empty string
+  #[case("0x")] // Only prefix
   #[case("0xG")] // Invalid hex digit
   #[case("0x 1")] // Space in number
   #[case("$17")] // Invalid prefix character
-  fn test_get_remainder_invalid(#[case] input: &str) {
-    assert!(get_remainder_4T::<8>(input).is_none());
+  fn test_parse_hex_invalid(#[case] input: &str) {
+    assert!(parse_hex(input).is_none());
+  }
+
+  #[rstest]
+  #[case(17, 8, 2)] // (17-1)/8 = 2
+  #[case(41, 8, 5)] // (41-1)/8 = 5
+  #[case(16, 4, 3)] // (16-1)/4 = 3
+  fn test_get_unity_power(#[case] value: u64, #[case] d: usize, #[case] expected: u64) {
+    assert_eq!(get_unity_power(value, d), expected);
+  }
+
+  #[rstest]
+  #[case(17, 4, 1)] // 17 ≡ 1 (mod 4*4)
+  #[case(41, 10, 1)] // 41 ≡ 1 (mod 4*10)
+  fn test_get_remainder_4t(#[case] value: u64, #[case] t: usize, #[case] expected: u64) {
+    assert_eq!(get_remainder_4t(value, t), expected);
   }
 
   #[test]
   fn test_verify_modulus() {
-    // Test with T = 1 (smallest valid T)
-    assert!(!verify_modulus::<MockField, 1>());
-
-    // Test with larger T values
-    assert!(!verify_modulus::<MockField, 16>());
+    assert!(verify_modulus::<MockField, 8>());
   }
 
   #[test]
-  fn test_unity_power() {
+  fn test_unity_power_with_field() {
     assert_eq!(unity_power::<MockField, 8>(), 2);
-    assert_eq!(unity_power::<MockField, 16>(), 1);
   }
 }

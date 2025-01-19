@@ -5,9 +5,9 @@ use comptime::{unity_power, verify_modulus};
 use super::*;
 
 // First define our basis tags as zero-sized types
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct StandardBasis;
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct NTTBasis;
 
 trait Basis {}
@@ -15,7 +15,7 @@ impl Basis for StandardBasis {}
 impl Basis for NTTBasis {}
 
 // Modify Ring to take a basis parameter
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Ring<F: PrimeField, const D: usize, const T: usize, B: Basis>
 where
   // D is a power of two
@@ -37,6 +37,8 @@ where
   [(); verify_modulus::<F, T>() as usize - 1]:,
 {
   pub fn ntt(self) -> Ring<F, D, T, NTTBasis> {
+    // TODO: calling `.pow()` is going to be more inefficient than other methods probably. This can
+    // likely all be done at compile time.
     let omega = F::MULTIPLICATIVE_GENERATOR.pow([unity_power::<F, D>()]);
     let mut result = [F::ZERO; D];
 
@@ -169,10 +171,7 @@ mod tests {
     let ring_b: Ring<MockField, 16, 8, StandardBasis> = create_ring(b);
     let expected_ring: Ring<MockField, 16, 8, StandardBasis> = create_ring(expected);
 
-    assert_eq!(
-      (ring_a + ring_b).coefficients.map(|f| f.inner()[0]),
-      expected_ring.coefficients.map(|f| f.inner()[0])
-    );
+    assert_eq!(ring_a + ring_b, expected_ring);
   }
 
   #[rstest]
@@ -205,10 +204,7 @@ mod tests {
     let ring_b: Ring<MockField, 8, 8, StandardBasis> = create_ring(b);
     let expected_ring: Ring<MockField, 8, 8, StandardBasis> = create_ring(expected);
 
-    assert_eq!(
-      (ring_a + ring_b).coefficients.map(|f| f.inner()[0]),
-      expected_ring.coefficients.map(|f| f.inner()[0])
-    );
+    assert_eq!(ring_a + ring_b, expected_ring);
   }
 
   #[test]
@@ -232,10 +228,7 @@ mod tests {
     // At X = 9^7 ≡ 2:    1 + 2 = 3
     let expected: Ring<MockField, 8, 8, NTTBasis> = create_ring([2, 10, 14, 16, 0, 9, 5, 3]);
 
-    assert_eq!(
-      ntt_result.coefficients.map(|f| f.inner()[0]),
-      expected.coefficients.map(|f| f.inner()[0])
-    );
+    assert_eq!(ntt_result, expected);
   }
 
   #[test]
@@ -247,10 +240,7 @@ mod tests {
     let ntt_result = input.ntt();
     let intt_result = ntt_result.intt();
 
-    assert_eq!(
-      input.coefficients.map(|f| f.inner()[0]),
-      intt_result.coefficients.map(|f| f.inner()[0])
-    );
+    assert_eq!(input, intt_result);
   }
 
   #[test]
@@ -268,10 +258,7 @@ mod tests {
     // Correct answer
     let expected: Ring<MockField, 8, 8, StandardBasis> = create_ring([0, 0, 1, 1, 0, 0, 0, 0]);
 
-    assert_eq!(
-      expected.coefficients.map(|f| f.inner()[0]),
-      intt_result.coefficients.map(|f| f.inner()[0])
-    );
+    assert_eq!(expected, intt_result);
   }
 
   #[test]
@@ -292,9 +279,6 @@ mod tests {
     let expected: Ring<MockField, 16, 8, StandardBasis> =
       create_ring([0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
-    assert_eq!(
-      expected.coefficients.map(|f| f.inner()[0]),
-      intt_result.coefficients.map(|f| f.inner()[0])
-    );
+    assert_eq!(expected, intt_result);
   }
 }
