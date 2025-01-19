@@ -2,7 +2,7 @@
 authors     = ["Colin Roberts"]
 description = "A no-std implementation of the Ajtai commitment scheme."
 edition     = "2021"
-keywords    = ["cryptography", "commitment scheme", "lattices"]
+keywords    = ["cryptography", "LWE", "lattices"]
 license     = "MIT"
 name        = "ajtai"
 readme      = "README.md"
