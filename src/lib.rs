@@ -20,7 +20,8 @@ mod mock {
 
   #[derive(PrimeField)]
   #[PrimeFieldModulus = "17"]
-  #[PrimeFieldGenerator = "2"]
+  // NOTE: This does NOT verify the number is actually a generator! FML
+  #[PrimeFieldGenerator = "3"]
   #[PrimeFieldReprEndianness = "little"]
   pub struct MockField([u64; 1]);
 

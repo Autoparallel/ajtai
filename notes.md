@@ -7,6 +7,13 @@ Example satisfying all the criterion:
 - $q = 17$
 - $d = 16 = 2^4$
 - $t = 8$
+- (based on notes we have $k=2$)
+
+Another Example satisfying all the criterion:
+- $q = 17$
+- $d = 8 = 2^3$
+- $t = 8$
+- (based on notes we have $k=2$)
 
 Then $$1+2\cdot 8 = 17~(\textrm{mod}~32)$$
 
