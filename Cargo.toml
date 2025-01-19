@@ -10,8 +10,7 @@ repository  = "https://github.com/autoparallel/ajtai"
 version     = "0.1.0"
 
 [dependencies]
-ff   = { version = "0.13", default-features = false, features = ["derive"] }
-rand = { version = "0.8", default-features = false }
+ff = { version = "0.13", default-features = false, features = ["derive"] }
 
 [dev-dependencies]
 rstest = { version = "0.24", default-features = false }
