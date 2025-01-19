@@ -9,3 +9,7 @@ Example satisfying all the criterion:
 - $t = 8$
 
 Then $$1+2\cdot 8 = 17~(\textrm{mod}~32)$$
+
+## NTT
+- https://www.nayuki.io/page/number-theoretic-transform-integer-dft
+- has less restrictions on it than in the paper

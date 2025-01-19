@@ -25,6 +25,6 @@ mod mock {
   pub struct MockField([u64; 1]);
 
   impl MockField {
-    pub fn inner(&self) -> &[u64] { &self.0 }
+    pub const fn inner(&self) -> &[u64] { &self.0 }
   }
 }
