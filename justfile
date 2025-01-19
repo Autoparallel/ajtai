@@ -168,7 +168,7 @@ ci:
     just run-single-check "Windows clippy" "cargo clippy --target x86_64-pc-windows-gnu --all-targets --all-features -- --deny warnings" || ERROR=1; \
     just run-single-check "Test suite" "cargo test --verbose --workspace" || ERROR=1; \
     just run-single-check "Unused dependencies" "cargo +nightly udeps --workspace" || ERROR=1; \
-    just run-single-check "Semver compatibility" "cargo semver-checks check-release --workspace" || ERROR=1; \
+    just run-single-check "Semver compatibility" "(rustup override set stable && cargo semver-checks check-release --workspace && rustup override unset)" || ERROR=1; \
     printf "\n{{bold}}CI Summary:{{reset}}\n"; \
     if [ $ERROR -eq 0 ]; then \
         printf "{{success}}{{bold}}All checks passed successfully!{{reset}}\n"; \
