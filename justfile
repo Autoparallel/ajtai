@@ -127,7 +127,7 @@ lint-windows:
 # Check for semantic versioning for workspace crates
 semver:
     @just header "Checking semver compatibility"
-    cargo semver-checks check-release --workspace
+    rustup override set stable && cargo semver-checks check-release --workspace && rustup override unset
 
 # Run format for the workspace
 fmt:
