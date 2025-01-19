@@ -16,6 +16,43 @@ where
   inner: [F; D],
 }
 
+// TODO: Make a typestate for this too
+impl<F: PrimeField, const D: usize, const T: usize> Ring<F, D, T>
+where
+  [(); D.is_power_of_two() as usize - 1]:,
+  [(); (D % T == 0) as usize - 1]:,
+  [(); verify_modulus::<F, T>() as usize - 1]:,
+{
+  pub fn ntt(&self) -> Self {
+    let omega = F::MULTIPLICATIVE_GENERATOR;
+    let mut result = self.clone();
+
+    // Length is D which is power of 2
+    let n = D;
+    let mut m = 1; // Subarray size starts at 1
+
+    // Cooley-Tukey NTT
+    while m < n {
+      let w_m = omega.pow(&[(n / (2 * m)) as u64]);
+
+      for k in (0..n).step_by(2 * m) {
+        let mut w = F::ONE;
+
+        for j in 0..m {
+          let t = w * result.inner[k + j + m];
+          result.inner[k + j + m] = result.inner[k + j] - t;
+          result.inner[k + j] = result.inner[k + j] + t;
+          w = w * w_m;
+        }
+      }
+
+      m = m * 2;
+    }
+
+    result
+  }
+}
+
 impl<F: PrimeField, const D: usize, const T: usize> Add for Ring<F, D, T>
 where
   [(); D.is_power_of_two() as usize - 1]:,
