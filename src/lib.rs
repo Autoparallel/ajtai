@@ -24,8 +24,4 @@ mod mock {
   #[PrimeFieldGenerator = "3"]
   #[PrimeFieldReprEndianness = "little"]
   pub struct MockField([u64; 1]);
-
-  impl MockField {
-    pub const fn inner(&self) -> &[u64] { &self.0 }
-  }
 }

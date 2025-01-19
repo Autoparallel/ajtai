@@ -1,30 +1,76 @@
+//! Ring implementation for lattice-based cryptography using the Number Theoretic Transform (NTT).
+//!
+//! This module provides a type-safe implementation of cyclotomic rings commonly used in
+//! lattice-based cryptography, particularly for schemes based on Ring-LWE. The implementation
+//! uses compile-time checks to ensure mathematical correctness of parameters.
+//!
+//! The core type [`CyclotomicRing`] represents elements of the ring Z[X]/(X^D + 1) where:
+//! - D is a power of two
+//! - T is a divisor of D
+//! - The modulus q satisfies q ≡ 1 + 2T (mod 4T)
+//!
+//! # Example
+//! ```
+//! # use ajtai::*;
+//! // Create two polynomials in the ring and multiply them
+//! let a: CyclotomicRing<MockField, 8, 8, StandardBasis> = create_ring([1, 1, 0, 0, 0, 0, 0, 0]);
+//! let b: CyclotomicRing<MockField, 8, 8, StandardBasis> = create_ring([0, 0, 1, 0, 0, 0, 0, 0]);
+//! let c = a * b;
+//! ```
+
 use core::ops::{Add, Mul};
 
 use comptime::{unity_power, verify_modulus};
 
 use super::*;
 
+/// Private module to prevent external implementations of the [`Basis`] trait.
 mod sealed {
   pub trait Sealed {}
 }
 
-// First define our basis tags as zero-sized types
+/// A marker trait representing the basis in which ring elements are expressed.
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait Basis: sealed::Sealed {}
+
+/// Represents elements in the standard polynomial basis.
+///
+/// In this basis, elements are represented as polynomials with coefficients modulo q.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct StandardBasis;
+
+/// Represents elements in the Number Theoretic Transform (NTT) basis.
+///
+/// In this basis, elements are represented by their evaluations at powers of a primitive root of
+/// unity.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct NTTBasis;
 
-pub trait Basis: sealed::Sealed {}
-
-// Implement the sealed trait for our basis types
 impl sealed::Sealed for StandardBasis {}
 impl sealed::Sealed for NTTBasis {}
 
-// Implement the public trait
 impl Basis for StandardBasis {}
 impl Basis for NTTBasis {}
 
-// Modify Ring to take a basis parameter
+/// A type representing elements of a cyclotomic ring with compile-time parameter validation.
+///
+/// # Type Parameters
+///
+/// * `F` - The prime field used for coefficients
+/// * `D` - The degree of the cyclotomic polynomial X^D + 1
+/// * `T` - A parameter dividing D that determines properties of the modulus
+/// * `B` - The basis in which the element is represented ([`StandardBasis`] or [`NTTBasis`])
+///
+/// # Mathematical Background
+///
+/// This type represents elements of the ring Z[X]/(X^D + 1) where arithmetic is performed
+/// modulo a prime q. The parameters must satisfy:
+/// - D is a power of two
+/// - T divides D
+/// - q ≡ 1 + 2T (mod 4T)
+///
+/// These conditions ensure the existence of appropriate roots of unity for the NTT.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CyclotomicRing<F: PrimeField, const D: usize, const T: usize, B: Basis>
 where
@@ -34,7 +80,9 @@ where
   [(); (D % T == 0) as usize - 1]:,
   // q = 1 + 2*T (mod 4*T)
   [(); verify_modulus::<F, T>() as usize - 1]:, {
+  /// The coefficients of the ring element
   coefficients: [F; D],
+  /// Phantom data to track the basis
   _basis:       core::marker::PhantomData<B>,
 }
 
@@ -46,12 +94,17 @@ where
   [(); (D % T == 0) as usize - 1]:,
   [(); verify_modulus::<F, T>() as usize - 1]:,
 {
+  /// Converts this element to the NTT basis by evaluating at appropriate powers of a root of unity.
+  ///
+  /// This implementation uses a naive quadratic-time algorithm. For production use, it should
+  /// be replaced with an FFT-based implementation.
   pub fn ntt(self) -> CyclotomicRing<F, D, T, NTTBasis> {
     // TODO: calling `.pow()` is going to be more inefficient than other methods probably. This can
     // likely all be done at compile time.
     let omega = F::MULTIPLICATIVE_GENERATOR.pow([unity_power::<F, D>()]);
     let mut result = [F::ZERO; D];
 
+    #[allow(clippy::needless_range_loop)]
     for i in 0..D {
       let omega_i = omega.pow([i as u64]);
 
@@ -65,13 +118,16 @@ where
   }
 }
 
-#[cfg(test)]
 impl<F: PrimeField, const D: usize, const T: usize> CyclotomicRing<F, D, T, NTTBasis>
 where
   [(); D.is_power_of_two() as usize - 1]:,
   [(); (D % T == 0) as usize - 1]:,
   [(); verify_modulus::<F, T>() as usize - 1]:,
 {
+  /// Converts this element from NTT basis back to standard basis.
+  ///
+  /// This involves evaluating the Lagrange interpolation formula, which is currently
+  /// implemented in a naive quadratic-time algorithm.
   pub fn intt(self) -> CyclotomicRing<F, D, T, StandardBasis> {
     // TODO: calling `.pow()` is going to be more inefficient than other methods probably. This can
     // likely all be done at compile time.
@@ -83,6 +139,7 @@ where
 
     let mut result = [F::ZERO; D];
 
+    #[allow(clippy::needless_range_loop)]
     for i in 0..D {
       for j in 0..D {
         let power = omega_inv.pow([(i * j) as u64]);
@@ -105,6 +162,7 @@ where
 {
   type Output = Self;
 
+  /// Adds two ring elements coefficient-wise.
   fn add(self, rhs: Self) -> Self::Output {
     Self {
       coefficients: core::array::from_fn(|i| self.coefficients[i] + rhs.coefficients[i]),
@@ -121,11 +179,29 @@ where
 {
   type Output = Self;
 
+  /// Multiplies two elements in NTT basis coefficient-wise.
   fn mul(self, rhs: Self) -> Self::Output {
     Self {
       coefficients: core::array::from_fn(|i| self.coefficients[i] * rhs.coefficients[i]),
       _basis:       core::marker::PhantomData,
     }
+  }
+}
+
+impl<F: PrimeField, const D: usize, const T: usize> Mul for CyclotomicRing<F, D, T, StandardBasis>
+where
+  [(); D.is_power_of_two() as usize - 1]:,
+  [(); (D % T == 0) as usize - 1]:,
+  [(); verify_modulus::<F, T>() as usize - 1]:,
+{
+  type Output = Self;
+
+  /// Multiplies two elements in standard basis by converting to NTT basis,
+  /// multiplying coefficient-wise, and converting back.
+  fn mul(self, rhs: Self) -> Self::Output {
+    let lhs_ntt = self.ntt();
+    let rhs_ntt = rhs.ntt();
+    (lhs_ntt * rhs_ntt).intt()
   }
 }
 
@@ -278,23 +354,19 @@ mod tests {
   }
 
   #[test]
-  fn test_mul_D_16() {
+  fn test_mul_d_16() {
     // Create polynomial 1 + X (coefficients: 1, 1, 0, 0, 0, 0, 0, 0)
     let input_1: CyclotomicRing<MockField, 16, 8, StandardBasis> =
       create_ring([1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     let input_2: CyclotomicRing<MockField, 16, 8, StandardBasis> =
       create_ring([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
-    // Compute NTT
-    let ntt_result_1 = input_1.ntt();
-    let ntt_result_2 = input_2.ntt();
-    let mul_result = ntt_result_1 * ntt_result_2;
-    let intt_result = mul_result.intt();
+    let result = input_1 * input_2;
 
     // Correct answer
     let expected: CyclotomicRing<MockField, 16, 8, StandardBasis> =
       create_ring([0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
-    assert_eq!(expected, intt_result);
+    assert_eq!(expected, result);
   }
 }

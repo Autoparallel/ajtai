@@ -1,5 +1,21 @@
+//! Compile-time utilities for validating and computing field parameters.
+//!
+//! This module provides const functions for parsing and validating moduli used in
+//! cyclotomic ring implementations, particularly for verifying properties needed
+//! for the Number Theoretic Transform (NTT).
+
 use super::*;
 
+/// Converts a single ASCII hex character to its numeric value.
+///
+/// # Arguments
+///
+/// * `c` - An ASCII character representing a hexadecimal digit
+///
+/// # Returns
+///
+/// * `Some(value)` if the character is a valid hex digit (0-9, a-f, A-F)
+/// * `None` otherwise
 const fn hex_to_digit(c: u8) -> Option<u64> {
   match c {
     b'0'..=b'9' => Some((c - b'0') as u64),
@@ -9,6 +25,19 @@ const fn hex_to_digit(c: u8) -> Option<u64> {
   }
 }
 
+/// Parses a hexadecimal string into a u64 at compile time.
+///
+/// Supports optional "0x" or "0X" prefix. Returns None if the string is empty,
+/// contains invalid characters, or represents a value larger than [`u64::MAX`].
+///
+/// # Arguments
+///
+/// * `s` - The string to parse, optionally beginning with "0x" or "0X"
+///
+/// # Returns
+///
+/// * `Some(value)` if the string is a valid hexadecimal number
+/// * `None` if the string is invalid or empty
 const fn parse_hex(s: &str) -> Option<u64> {
   let bytes = s.as_bytes();
   if bytes.is_empty() {
@@ -37,13 +66,50 @@ const fn parse_hex(s: &str) -> Option<u64> {
   Some(value)
 }
 
+/// Computes value mod 4t at compile time.
+///
+/// # Arguments
+///
+/// * `value` - The value to reduce
+/// * `t` - The parameter t where we compute modulo 4t
+///
+/// # Returns
+///
+/// The remainder when value is divided by 4t
 const fn get_remainder_4t(value: u64, t: usize) -> u64 {
   let four_t = 4 * (t as u64);
   value % four_t
 }
 
+/// Computes (value - 1)/d at compile time.
+///
+/// Used to compute powers for roots of unity in the NTT implementation.
+///
+/// # Arguments
+///
+/// * `value` - The modulus value (typically prime)
+/// * `d` - The degree parameter of the cyclotomic ring
+///
+/// # Returns
+///
+/// The quotient (value - 1)/d
 const fn get_unity_power(value: u64, d: usize) -> u64 { (value - 1) / (d as u64) }
 
+/// Verifies at compile time that a prime field's modulus satisfies
+/// the congruence condition needed for the NTT implementation.
+///
+/// Specifically, checks if q ≡ 1 + 2T (mod 4T) where q is the field's
+/// modulus and T is the supplied parameter.
+///
+/// # Type Parameters
+///
+/// * `F` - The prime field whose modulus we're checking
+/// * `T` - The parameter T that determines the congruence condition
+///
+/// # Returns
+///
+/// * `true` if the modulus satisfies the congruence condition
+/// * `false` otherwise
 pub const fn verify_modulus<F: PrimeField, const T: usize>() -> bool {
   if let Some(value) = parse_hex(F::MODULUS) {
     let remainder = get_remainder_4t(value, T);
@@ -54,6 +120,20 @@ pub const fn verify_modulus<F: PrimeField, const T: usize>() -> bool {
   }
 }
 
+/// Computes at compile time the power needed for the NTT's root of unity.
+///
+/// For a field of order q and degree parameter D, computes (q-1)/D.
+/// This value is used to determine the appropriate root of unity for
+/// the NTT implementation.
+///
+/// # Type Parameters
+///
+/// * `F` - The prime field we're working in
+/// * `D` - The degree parameter of the cyclotomic ring
+///
+/// # Returns
+///
+/// The power (q-1)/D where q is the field's modulus
 pub const fn unity_power<F: PrimeField, const D: usize>() -> u64 {
   match parse_hex(F::MODULUS) {
     Some(value) => get_unity_power(value, D),
