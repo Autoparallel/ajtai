@@ -4,19 +4,29 @@ use comptime::{unity_power, verify_modulus};
 
 use super::*;
 
+mod sealed {
+  pub trait Sealed {}
+}
+
 // First define our basis tags as zero-sized types
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct StandardBasis;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct NTTBasis;
 
-trait Basis {}
+pub trait Basis: sealed::Sealed {}
+
+// Implement the sealed trait for our basis types
+impl sealed::Sealed for StandardBasis {}
+impl sealed::Sealed for NTTBasis {}
+
+// Implement the public trait
 impl Basis for StandardBasis {}
 impl Basis for NTTBasis {}
 
 // Modify Ring to take a basis parameter
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Ring<F: PrimeField, const D: usize, const T: usize, B: Basis>
+pub struct CyclotomicRing<F: PrimeField, const D: usize, const T: usize, B: Basis>
 where
   // D is a power of two
   [(); D.is_power_of_two() as usize - 1]:,
@@ -30,13 +40,13 @@ where
 
 // TODO: I don't think we can always just square to get the omega we want
 // TODO: This can be optimized heavily using Cooley-Tukey and other tricks
-impl<F: PrimeField, const D: usize, const T: usize> Ring<F, D, T, StandardBasis>
+impl<F: PrimeField, const D: usize, const T: usize> CyclotomicRing<F, D, T, StandardBasis>
 where
   [(); D.is_power_of_two() as usize - 1]:,
   [(); (D % T == 0) as usize - 1]:,
   [(); verify_modulus::<F, T>() as usize - 1]:,
 {
-  pub fn ntt(self) -> Ring<F, D, T, NTTBasis> {
+  pub fn ntt(self) -> CyclotomicRing<F, D, T, NTTBasis> {
     // TODO: calling `.pow()` is going to be more inefficient than other methods probably. This can
     // likely all be done at compile time.
     let omega = F::MULTIPLICATIVE_GENERATOR.pow([unity_power::<F, D>()]);
@@ -51,18 +61,18 @@ where
       }
     }
 
-    Ring { coefficients: result, _basis: core::marker::PhantomData }
+    CyclotomicRing { coefficients: result, _basis: core::marker::PhantomData }
   }
 }
 
 #[cfg(test)]
-impl<F: PrimeField, const D: usize, const T: usize> Ring<F, D, T, NTTBasis>
+impl<F: PrimeField, const D: usize, const T: usize> CyclotomicRing<F, D, T, NTTBasis>
 where
   [(); D.is_power_of_two() as usize - 1]:,
   [(); (D % T == 0) as usize - 1]:,
   [(); verify_modulus::<F, T>() as usize - 1]:,
 {
-  pub fn intt(self) -> Ring<F, D, T, StandardBasis> {
+  pub fn intt(self) -> CyclotomicRing<F, D, T, StandardBasis> {
     // TODO: calling `.pow()` is going to be more inefficient than other methods probably. This can
     // likely all be done at compile time.
     let omega = F::MULTIPLICATIVE_GENERATOR.pow([unity_power::<F, D>()]);
@@ -83,11 +93,11 @@ where
       result[i] *= n_inv;
     }
 
-    Ring { coefficients: result, _basis: core::marker::PhantomData }
+    CyclotomicRing { coefficients: result, _basis: core::marker::PhantomData }
   }
 }
 
-impl<F: PrimeField, const D: usize, const T: usize, B: Basis> Add for Ring<F, D, T, B>
+impl<F: PrimeField, const D: usize, const T: usize, B: Basis> Add for CyclotomicRing<F, D, T, B>
 where
   [(); D.is_power_of_two() as usize - 1]:,
   [(); (D % T == 0) as usize - 1]:,
@@ -103,7 +113,7 @@ where
   }
 }
 
-impl<F: PrimeField, const D: usize, const T: usize> Mul for Ring<F, D, T, NTTBasis>
+impl<F: PrimeField, const D: usize, const T: usize> Mul for CyclotomicRing<F, D, T, NTTBasis>
 where
   [(); D.is_power_of_two() as usize - 1]:,
   [(); (D % T == 0) as usize - 1]:,
@@ -127,19 +137,19 @@ mod tests {
 
   #[test]
   fn test_valid_dimensions() {
-    let _: Ring<MockField, 8, 8, StandardBasis> = create_ring([1; 8]);
-    let _: Ring<MockField, 16, 8, StandardBasis> = create_ring([1; 16]);
+    let _: CyclotomicRing<MockField, 8, 8, StandardBasis> = create_ring([1; 8]);
+    let _: CyclotomicRing<MockField, 16, 8, StandardBasis> = create_ring([1; 16]);
   }
 
   // Helper function to create Ring instances more easily
   fn create_ring<const D: usize, const T: usize, B: Basis>(
     values: [u64; D],
-  ) -> Ring<MockField, D, T, B>
+  ) -> CyclotomicRing<MockField, D, T, B>
   where
     [(); D.is_power_of_two() as usize - 1]:,
     [(); (D % T == 0) as usize - 1]:,
     [(); verify_modulus::<MockField, T>() as usize - 1]:, {
-    Ring { coefficients: values.map(MockField::from), _basis: PhantomData::<B> }
+    CyclotomicRing { coefficients: values.map(MockField::from), _basis: PhantomData::<B> }
   }
   #[rstest]
   #[case::basic_addition(
@@ -167,9 +177,9 @@ mod tests {
     #[case] b: [u64; 16],
     #[case] expected: [u64; 16],
   ) {
-    let ring_a: Ring<MockField, 16, 8, StandardBasis> = create_ring(a);
-    let ring_b: Ring<MockField, 16, 8, StandardBasis> = create_ring(b);
-    let expected_ring: Ring<MockField, 16, 8, StandardBasis> = create_ring(expected);
+    let ring_a: CyclotomicRing<MockField, 16, 8, StandardBasis> = create_ring(a);
+    let ring_b: CyclotomicRing<MockField, 16, 8, StandardBasis> = create_ring(b);
+    let expected_ring: CyclotomicRing<MockField, 16, 8, StandardBasis> = create_ring(expected);
 
     assert_eq!(ring_a + ring_b, expected_ring);
   }
@@ -200,9 +210,9 @@ mod tests {
     #[case] b: [u64; 8],
     #[case] expected: [u64; 8],
   ) {
-    let ring_a: Ring<MockField, 8, 8, StandardBasis> = create_ring(a);
-    let ring_b: Ring<MockField, 8, 8, StandardBasis> = create_ring(b);
-    let expected_ring: Ring<MockField, 8, 8, StandardBasis> = create_ring(expected);
+    let ring_a: CyclotomicRing<MockField, 8, 8, StandardBasis> = create_ring(a);
+    let ring_b: CyclotomicRing<MockField, 8, 8, StandardBasis> = create_ring(b);
+    let expected_ring: CyclotomicRing<MockField, 8, 8, StandardBasis> = create_ring(expected);
 
     assert_eq!(ring_a + ring_b, expected_ring);
   }
@@ -210,7 +220,8 @@ mod tests {
   #[test]
   fn test_ntt_simple() {
     // Create polynomial 1 + X (coefficients: 1, 1, 0, 0, 0, 0, 0, 0)
-    let input: Ring<MockField, 8, 8, StandardBasis> = create_ring([1, 1, 0, 0, 0, 0, 0, 0]);
+    let input: CyclotomicRing<MockField, 8, 8, StandardBasis> =
+      create_ring([1, 1, 0, 0, 0, 0, 0, 0]);
 
     // Compute NTT
     let ntt_result = input.ntt();
@@ -226,7 +237,8 @@ mod tests {
     // At X = 9^5 ≡ 8:    1 + 8 = 9
     // At X = 9^6 ≡ 4:    1 + 4 = 5
     // At X = 9^7 ≡ 2:    1 + 2 = 3
-    let expected: Ring<MockField, 8, 8, NTTBasis> = create_ring([2, 10, 14, 16, 0, 9, 5, 3]);
+    let expected: CyclotomicRing<MockField, 8, 8, NTTBasis> =
+      create_ring([2, 10, 14, 16, 0, 9, 5, 3]);
 
     assert_eq!(ntt_result, expected);
   }
@@ -234,7 +246,8 @@ mod tests {
   #[test]
   fn test_inverse_ntt_simple() {
     // Create polynomial 1 + X (coefficients: 1, 1, 0, 0, 0, 0, 0, 0)
-    let input: Ring<MockField, 8, 8, StandardBasis> = create_ring([1, 1, 0, 0, 0, 0, 0, 0]);
+    let input: CyclotomicRing<MockField, 8, 8, StandardBasis> =
+      create_ring([1, 1, 0, 0, 0, 0, 0, 0]);
 
     // Compute NTT
     let ntt_result = input.ntt();
@@ -246,8 +259,10 @@ mod tests {
   #[test]
   fn test_mul() {
     // Create polynomial 1 + X (coefficients: 1, 1, 0, 0, 0, 0, 0, 0)
-    let input_1: Ring<MockField, 8, 8, StandardBasis> = create_ring([1, 1, 0, 0, 0, 0, 0, 0]);
-    let input_2: Ring<MockField, 8, 8, StandardBasis> = create_ring([0, 0, 1, 0, 0, 0, 0, 0]);
+    let input_1: CyclotomicRing<MockField, 8, 8, StandardBasis> =
+      create_ring([1, 1, 0, 0, 0, 0, 0, 0]);
+    let input_2: CyclotomicRing<MockField, 8, 8, StandardBasis> =
+      create_ring([0, 0, 1, 0, 0, 0, 0, 0]);
 
     // Compute NTT
     let ntt_result_1 = input_1.ntt();
@@ -256,7 +271,8 @@ mod tests {
     let intt_result = mul_result.intt();
 
     // Correct answer
-    let expected: Ring<MockField, 8, 8, StandardBasis> = create_ring([0, 0, 1, 1, 0, 0, 0, 0]);
+    let expected: CyclotomicRing<MockField, 8, 8, StandardBasis> =
+      create_ring([0, 0, 1, 1, 0, 0, 0, 0]);
 
     assert_eq!(expected, intt_result);
   }
@@ -264,9 +280,9 @@ mod tests {
   #[test]
   fn test_mul_D_16() {
     // Create polynomial 1 + X (coefficients: 1, 1, 0, 0, 0, 0, 0, 0)
-    let input_1: Ring<MockField, 16, 8, StandardBasis> =
+    let input_1: CyclotomicRing<MockField, 16, 8, StandardBasis> =
       create_ring([1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-    let input_2: Ring<MockField, 16, 8, StandardBasis> =
+    let input_2: CyclotomicRing<MockField, 16, 8, StandardBasis> =
       create_ring([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
     // Compute NTT
@@ -276,7 +292,7 @@ mod tests {
     let intt_result = mul_result.intt();
 
     // Correct answer
-    let expected: Ring<MockField, 16, 8, StandardBasis> =
+    let expected: CyclotomicRing<MockField, 16, 8, StandardBasis> =
       create_ring([0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
     assert_eq!(expected, intt_result);
