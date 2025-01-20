@@ -96,6 +96,7 @@ where
   // q = 1 + 2*T (mod 4*T)
   [(); verify_modulus::<F, T>() as usize - 1]:,
 {
+  /// Element of [`CyclotomicRing`] with all [`PrimeField::ZERO`] coefficients
   pub const DEFAULT: Self = Self { coefficients: [F::ZERO; D], _basis: PhantomData::<B> };
 
   /// Creates a new ring element from an array of field element values.
@@ -185,11 +186,13 @@ where
       let mut is_greater = false;
       for i in (0..8).rev() {
         // Compare from most significant byte
-        if val_bytes[i] > q_bytes[i] / 2 {
-          is_greater = true;
-          break;
-        } else if val_bytes[i] < q_bytes[i] / 2 {
-          break;
+        match val_bytes[i].cmp(&(q_bytes[i] / 2)) {
+          core::cmp::Ordering::Less => break,
+          core::cmp::Ordering::Equal => {},
+          core::cmp::Ordering::Greater => {
+            is_greater = true;
+            break;
+          },
         }
       }
 
@@ -207,18 +210,15 @@ where
       }
 
       // Update max if current is larger
-      let mut is_curr_larger = false;
       for i in (0..8).rev() {
-        if curr_bytes[i] > max_bytes[i] {
-          is_curr_larger = true;
-          break;
-        } else if curr_bytes[i] < max_bytes[i] {
-          break;
+        match curr_bytes[i].cmp(&max_bytes[i]) {
+          core::cmp::Ordering::Less => break,
+          core::cmp::Ordering::Equal => {},
+          core::cmp::Ordering::Greater => {
+            max_bytes = curr_bytes;
+            break;
+          },
         }
-      }
-
-      if is_curr_larger {
-        max_bytes = curr_bytes;
       }
     }
 

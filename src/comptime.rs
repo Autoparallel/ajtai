@@ -66,6 +66,7 @@ const fn parse_hex(s: &str) -> Option<u64> {
   Some(value)
 }
 
+/// Converts the [`PrimeField::MODULUS`] to little endian bytes
 pub const fn modulus_to_le_bytes<F: PrimeField>() -> [u8; ((F::NUM_BITS as usize + 7) / 8) * 8] {
   let bytes = F::MODULUS.as_bytes();
   let mut out = [0u8; ((F::NUM_BITS as usize + 7) / 8) * 8];
@@ -167,7 +168,6 @@ pub const fn unity_power<F: PrimeField, const D: usize>() -> u64 {
 
 #[cfg(test)]
 mod tests {
-  use ff::Field;
   use rstest::rstest;
 
   use super::*;
