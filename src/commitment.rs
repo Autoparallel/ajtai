@@ -68,17 +68,17 @@ pub struct Commitment<F: PrimeField, const D: usize, const T: usize, const K: us
 
 impl<F: PrimeField, const D: usize, const T: usize, const K: usize, const B: usize>
   Commitment<F, D, T, K, B>
+where
+  [(); D.is_power_of_two() as usize - 1]:,
+  [(); (D % T == 0) as usize - 1]:,
+  [(); verify_modulus::<F, T>() as usize - 1]:,
+  [(); ((F::NUM_BITS as usize + 7) / 8) * 8]:,
 {
   pub const fn new(val: [CyclotomicRing<F, D, T, StandardBasis>; K]) -> Commitment<F, D, T, K, B> {
     Self(val)
   }
 
-  //   pub const fn norm(&self) -> usize {
-  //     for i in 0..K {
-  //       for j in 0..D {}
-  //     }
-  //     todo!()
-  //   }
+  pub fn sup_norm(&self) -> u64 { self.0.iter().map(CyclotomicRing::sup_norm).max().unwrap_or(0) }
 }
 
 #[cfg(test)]
@@ -118,5 +118,22 @@ mod tests {
       commitment.matrix != commitment2.matrix,
       "Two random setups produced identical matrices"
     );
+  }
+
+  #[test]
+  #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+  fn test_commitment_sup_norm() {
+    // Create a commitment with known values
+    let rings = [
+      CyclotomicRing::<MockField, 8, 8, StandardBasis>::new([1, 2, 3, 4, 5, 6, 7, 8]),
+      CyclotomicRing::<MockField, 8, 8, StandardBasis>::new([0, 16, 15, 14, 13, 12, 11, 10]),
+    ];
+    let commitment = Commitment::<MockField, 8, 8, 2, 1>::new(rings);
+
+    // The first ring has max value 8
+    // The second ring's values in minimal representation are:
+    // 0, 1 (17-16), 2 (17-15), 3 (17-14), 4 (17-13), 5 (17-12), 6 (17-11), 7 (17-10)
+    // So the maximum across both rings should be 8
+    assert_eq!(commitment.sup_norm(), 8);
   }
 }
