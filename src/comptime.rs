@@ -66,6 +66,31 @@ const fn parse_hex(s: &str) -> Option<u64> {
   Some(value)
 }
 
+/// Converts the [`PrimeField::MODULUS`] to little endian bytes
+pub const fn modulus_to_le_bytes<F: PrimeField>() -> [u8; ((F::NUM_BITS as usize + 7) / 8) * 8] {
+  let bytes = F::MODULUS.as_bytes();
+  let mut out = [0u8; ((F::NUM_BITS as usize + 7) / 8) * 8];
+
+  let mut i = if bytes.len() >= 2 && bytes[0] == b'0' && (bytes[1] == b'x' || bytes[1] == b'X') {
+    if bytes.len() == 2 {
+      panic!();
+    }
+    2 // Skip "0x" prefix
+  } else {
+    0
+  };
+
+  let mut out_idx = 0;
+  while i < bytes.len() {
+    let hi = hex_to_digit(bytes[i]).unwrap();
+    let lo = if i + 1 < bytes.len() { hex_to_digit(bytes[i + 1]).unwrap() } else { 0 };
+    out[out_idx] = ((hi << 4) | lo) as u8;
+    out_idx += 1;
+    i += 2;
+  }
+  out
+}
+
 /// Computes value mod 4t at compile time.
 ///
 /// # Arguments
@@ -211,5 +236,15 @@ mod tests {
   #[test]
   fn test_unity_power_with_field() {
     assert_eq!(unity_power::<MockField, 8>(), 2);
+  }
+
+  #[test]
+  #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+  fn test_modulus_to_le_bytes() {
+    // For modulus "17" (0x11):
+    // In binary: 0001 0001
+    // In little endian: 11 00 00 00 ... (remaining bytes are 0)
+    let bytes = modulus_to_le_bytes::<MockField>();
+    assert_eq!(bytes, [0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
   }
 }
