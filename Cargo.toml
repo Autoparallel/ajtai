@@ -11,10 +11,16 @@ version     = "0.1.1"
 
 [dependencies]
 ff = { version = "0.13", default-features = false, features = ["derive"] }
+rand_core = { version = "0.6", default-features = false, features = [
+    "getrandom",
+] }
 
 [dev-dependencies]
 rstest = { version = "0.24", default-features = false }
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", default-features = false, features = ["js"] }
+
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
-wasm-bindgen      = { version = "0.2", default-features = false }
-wasm-bindgen-test = { version = "0.3", default-features = false }
+wasm-bindgen      = { version = "0.2" }
+wasm-bindgen-test = { version = "0.3" }

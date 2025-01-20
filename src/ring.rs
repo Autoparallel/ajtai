@@ -26,10 +26,7 @@
 //! let c = a * b;
 //! ```
 
-use core::{
-  marker::PhantomData,
-  ops::{Add, Mul},
-};
+use core::ops::{Add, Mul};
 
 use comptime::{unity_power, verify_modulus};
 
@@ -83,26 +80,24 @@ impl Basis for NTTBasis {}
 ///
 /// These conditions ensure the existence of appropriate roots of unity for the NTT.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CyclotomicRing<F: PrimeField, const D: usize, const T: usize, B: Basis>
+pub struct CyclotomicRing<F: PrimeField, const D: usize, const T: usize, B: Basis> {
+  /// The coefficients of the ring element
+  pub coefficients: [F; D],
+  /// Phantom data to track the basis
+  _basis:           PhantomData<B>,
+}
+
+impl<F: PrimeField, const D: usize, const T: usize, B: Basis> CyclotomicRing<F, D, T, B>
 where
   // D is a power of two
   [(); D.is_power_of_two() as usize - 1]:,
   // T is a divisor of D
   [(); (D % T == 0) as usize - 1]:,
   // q = 1 + 2*T (mod 4*T)
-  [(); verify_modulus::<F, T>() as usize - 1]:, {
-  /// The coefficients of the ring element
-  coefficients: [F; D],
-  /// Phantom data to track the basis
-  _basis:       PhantomData<B>,
-}
-
-impl<F: PrimeField, const D: usize, const T: usize, B: Basis> CyclotomicRing<F, D, T, B>
-where
-  [(); D.is_power_of_two() as usize - 1]:,
-  [(); (D % T == 0) as usize - 1]:,
   [(); verify_modulus::<F, T>() as usize - 1]:,
 {
+  pub const DEFAULT: Self = Self { coefficients: [F::ZERO; D], _basis: PhantomData::<B> };
+
   /// Creates a new ring element from an array of field element values.
   ///
   /// # Arguments
@@ -132,12 +127,23 @@ where
   }
 }
 
+impl<F: PrimeField, const D: usize, const T: usize, B: Basis> From<[F; D]>
+  for CyclotomicRing<F, D, T, B>
+{
+  fn from(coefficients: [F; D]) -> Self {
+    CyclotomicRing { coefficients, _basis: PhantomData::<B> }
+  }
+}
+
 // TODO: I don't think we can always just square to get the omega we want
 // TODO: This can be optimized heavily using Cooley-Tukey and other tricks
 impl<F: PrimeField, const D: usize, const T: usize> CyclotomicRing<F, D, T, StandardBasis>
 where
+  // D is a power of two
   [(); D.is_power_of_two() as usize - 1]:,
+  // T is a divisor of D
   [(); (D % T == 0) as usize - 1]:,
+  // q = 1 + 2*T (mod 4*T)
   [(); verify_modulus::<F, T>() as usize - 1]:,
 {
   /// Converts this element to the NTT basis by evaluating at appropriate powers of a root of unity.
@@ -166,8 +172,12 @@ where
 
 impl<F: PrimeField, const D: usize, const T: usize> CyclotomicRing<F, D, T, NTTBasis>
 where
+  // D is a power
+  // of two
   [(); D.is_power_of_two() as usize - 1]:,
+  // T is a divisor of D
   [(); (D % T == 0) as usize - 1]:,
+  // q = 1 + 2*T (mod 4*T)
   [(); verify_modulus::<F, T>() as usize - 1]:,
 {
   /// Converts this element from NTT basis back to standard basis.
@@ -257,27 +267,32 @@ mod tests {
   use super::*;
 
   #[test]
+  #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
   fn test_valid_dimensions() {
     let _ = CyclotomicRing::<MockField, 8, 8, StandardBasis>::new([1; 8]);
     let _ = CyclotomicRing::<MockField, 16, 8, StandardBasis>::new([1; 16]);
   }
 
   #[rstest]
+  #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
   #[case::basic_addition(
       [1; 16],
       [2; 16],
       [3; 16]
   )]
+  #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
   #[case::with_zero(
       [0; 16],
       [5; 16],
       [5; 16]
   )]
+  #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
   #[case::wrapping_around_modulus(
       [15; 16],
       [10; 16],
       [8; 16]  // (15+10)%17=8
   )]
+  #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
   #[case::large_numbers(
       [16; 16],
       [16; 16],
@@ -296,21 +311,25 @@ mod tests {
   }
 
   #[rstest]
+  #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
   #[case::basic_addition(
       [1, 2, 3, 4, 5, 6, 7, 8],
       [2, 3, 4, 5, 6, 7, 8, 9],
       [3, 5, 7, 9, 11, 13, 15, 0]  // Last value wraps: (8+9)%17=0
   )]
+  #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
   #[case::with_zero(
       [0, 0, 0, 0, 0, 0, 0, 0],
       [1, 2, 3, 4, 5, 6, 7, 8],
       [1, 2, 3, 4, 5, 6, 7, 8]
   )]
+  #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
   #[case::wrapping_around_modulus(
       [15, 15, 15, 15, 15, 15, 15, 15],
       [10, 10, 10, 10, 10, 10, 10, 10],
       [8, 8, 8, 8, 8, 8, 8, 8]  // (15+10)%17=8
   )]
+  #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
   #[case::alternating_pattern(
       [16, 0, 16, 0, 16, 0, 16, 0],
       [0, 16, 0, 16, 0, 16, 0, 16],
@@ -329,6 +348,7 @@ mod tests {
   }
 
   #[test]
+  #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
   fn test_ntt_simple() {
     // Create polynomial 1 + X (coefficients: 1, 1, 0, 0, 0, 0, 0, 0)
     let input = CyclotomicRing::<MockField, 8, 8, StandardBasis>::new([1, 1, 0, 0, 0, 0, 0, 0]);
@@ -353,6 +373,7 @@ mod tests {
   }
 
   #[test]
+  #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
   fn test_inverse_ntt_simple() {
     // Create polynomial 1 + X (coefficients: 1, 1, 0, 0, 0, 0, 0, 0)
     let input = CyclotomicRing::<MockField, 8, 8, StandardBasis>::new([1, 1, 0, 0, 0, 0, 0, 0]);
@@ -365,6 +386,7 @@ mod tests {
   }
 
   #[test]
+  #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
   fn test_mul_d_8() {
     // Create polynomial 1 + X (coefficients: 1, 1, 0, 0, 0, 0, 0, 0)
     let input_1 = CyclotomicRing::<MockField, 8, 8, StandardBasis>::new([1, 1, 0, 0, 0, 0, 0, 0]);
@@ -383,6 +405,7 @@ mod tests {
   }
 
   #[test]
+  #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
   fn test_mul_d_16() {
     // Create polynomial 1 + X (coefficients: 1, 1, 0, 0, 0, 0, 0, 0)
     let input_1 = CyclotomicRing::<MockField, 16, 8, StandardBasis>::new([
