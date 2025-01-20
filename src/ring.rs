@@ -26,9 +26,9 @@
 //! let c = a * b;
 //! ```
 
-use core::ops::{Add, Mul};
+use core::ops::{Add, AddAssign, Mul};
 
-use comptime::{unity_power, verify_modulus};
+use comptime::{modulus_to_le_bytes, unity_power, verify_modulus};
 
 use super::*;
 
@@ -168,6 +168,67 @@ where
 
     CyclotomicRing { coefficients: result, _basis: PhantomData }
   }
+
+  /// Returns the sup norm (maximum coefficient size) of this ring element.
+  pub fn sup_norm(&self) -> u64
+  where [(); ((F::NUM_BITS as usize + 7) / 8) * 8]: {
+    let q_bytes = modulus_to_le_bytes::<F>();
+
+    // We need to track the maximum value seen
+    let mut max_bytes = [0u8; 8];
+
+    for coeff in self.coefficients {
+      let val_repr = coeff.to_repr();
+      let val_bytes = val_repr.as_ref();
+
+      // Compare with q/2 by comparing bytes
+      let mut is_greater = false;
+      for i in (0..8).rev() {
+        // Compare from most significant byte
+        if val_bytes[i] > q_bytes[i] / 2 {
+          is_greater = true;
+          break;
+        } else if val_bytes[i] < q_bytes[i] / 2 {
+          break;
+        }
+      }
+
+      // If greater than q/2, subtract from q
+      let mut curr_bytes = [0u8; 8];
+      if is_greater {
+        let mut borrow = 0u8;
+        for i in 0..8 {
+          let diff = q_bytes[i].wrapping_sub(val_bytes[i]).wrapping_sub(borrow);
+          borrow = if q_bytes[i] >= val_bytes[i] + borrow { 0 } else { 1 };
+          curr_bytes[i] = diff;
+        }
+      } else {
+        curr_bytes.copy_from_slice(val_bytes);
+      }
+
+      // Update max if current is larger
+      let mut is_curr_larger = false;
+      for i in (0..8).rev() {
+        if curr_bytes[i] > max_bytes[i] {
+          is_curr_larger = true;
+          break;
+        } else if curr_bytes[i] < max_bytes[i] {
+          break;
+        }
+      }
+
+      if is_curr_larger {
+        max_bytes = curr_bytes;
+      }
+    }
+
+    // Convert max_bytes to u64 for return value
+    let mut result = 0u64;
+    for (i, &byte) in max_bytes.iter().enumerate() {
+      result |= (byte as u64) << (8 * i);
+    }
+    result
+  }
 }
 
 impl<F: PrimeField, const D: usize, const T: usize> CyclotomicRing<F, D, T, NTTBasis>
@@ -223,6 +284,21 @@ where
     Self {
       coefficients: core::array::from_fn(|i| self.coefficients[i] + rhs.coefficients[i]),
       _basis:       PhantomData,
+    }
+  }
+}
+
+impl<F: PrimeField, const D: usize, const T: usize, B: Basis> AddAssign
+  for CyclotomicRing<F, D, T, B>
+where
+  [(); D.is_power_of_two() as usize - 1]:,
+  [(); (D % T == 0) as usize - 1]:,
+  [(); verify_modulus::<F, T>() as usize - 1]:,
+{
+  /// Adds two ring elements coefficient-wise.
+  fn add_assign(&mut self, rhs: Self) {
+    for i in 0..D {
+      self.coefficients[i] += rhs.coefficients[i];
     }
   }
 }
@@ -423,5 +499,62 @@ mod tests {
     ]);
 
     assert_eq!(expected, result);
+  }
+
+  #[test]
+  #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+  fn test_sup_norm() {
+    // Test with a variety of values:
+    // MockField has modulus 17, so:
+    // - Values 0-8 stay as they are
+    // - Values 9-16 get converted to their negative representation: 9 -> 8 (17-9) 10 -> 7 (17-10)
+    //   11 -> 6 (17-11) 12 -> 5 (17-12) 13 -> 4 (17-13) 14 -> 3 (17-14) 15 -> 2 (17-15) 16 -> 1
+    //   (17-16)
+    let ring = CyclotomicRing::<MockField, 8, 8, StandardBasis>::new([
+      0,  // 0
+      8,  // 8
+      9,  // converts to 8
+      16, // converts to 1
+      4,  // 4
+      13, // converts to 4
+      7,  // 7
+      11, // converts to 6
+    ]);
+
+    assert_eq!(ring.sup_norm(), 8);
+
+    let ring = CyclotomicRing::<MockField, 8, 8, StandardBasis>::new([
+      0,  // 0
+      8,  // 8
+      0,  // 0
+      16, // converts to 1
+      4,  // 4
+      13, // converts to 4
+      7,  // 7
+      11, // converts to 6
+    ]);
+
+    assert_eq!(ring.sup_norm(), 8);
+
+    let ring = CyclotomicRing::<MockField, 8, 8, StandardBasis>::new([
+      0,  // 0
+      0,  // 0
+      9,  // converts to 8
+      16, // converts to 1
+      4,  // 4
+      13, // converts to 4
+      7,  // 7
+      11, // converts to 6
+    ]);
+
+    assert_eq!(ring.sup_norm(), 8);
+
+    // Test with all zeros
+    let zero_ring = CyclotomicRing::<MockField, 8, 8, StandardBasis>::new([0; 8]);
+    assert_eq!(zero_ring.sup_norm(), 0);
+
+    // Test with all max values
+    let max_ring = CyclotomicRing::<MockField, 8, 8, StandardBasis>::new([16; 8]);
+    assert_eq!(max_ring.sup_norm(), 1); // All 16s convert to 1
   }
 }

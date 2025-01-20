@@ -11,7 +11,9 @@ use ff::PrimeField;
 use wasm_bindgen_test::wasm_bindgen_test;
 #[cfg(test)] use {mock::MockField, rstest::rstest};
 
-#[cfg(test)] extern crate std;
+#[cfg(test)]
+#[macro_use]
+extern crate std;
 
 pub mod commitment;
 pub mod comptime;
